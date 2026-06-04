@@ -568,8 +568,11 @@ def home():
     return "ASIA MX Docs Bot is running ✅"
 
 
-@app.route(f"/webhook/{WEBHOOK_SECRET}", methods=["POST"])
+@app.route(f"/webhook/{WEBHOOK_SECRET}", methods=["GET", "POST"])
 async def webhook():
+    if request.method == "GET":
+        return "Webhook endpoint is alive", 200
+
     update = Update.de_json(request.get_json(force=True), tg_app.bot)
     await tg_app.process_update(update)
     return "ok"
