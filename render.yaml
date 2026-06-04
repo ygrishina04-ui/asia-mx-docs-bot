@@ -1,4 +1,6 @@
-.env
-__pycache__/
-generated/
-*.pyc
+services:
+  - type: web
+    name: asia-mx-docs-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app
