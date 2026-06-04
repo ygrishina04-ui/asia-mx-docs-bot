@@ -94,13 +94,12 @@ def main_menu():
 
 def identifier_keyboard():
     return {
-        "keyboard": [
-            [{"text": "VIN"}, {"text": "Chassis"}],
-            [{"text": "❌ Отмена"}],
-        ],
-        "resize_keyboard": True,
-        "one_time_keyboard": True,
-        "is_persistent": True,
+        "inline_keyboard": [
+            [
+                {"text": "VIN", "callback_data": "identifier:VIN"},
+                {"text": "Chassis", "callback_data": "identifier:Chassis"},
+            ]
+        ]
     }
 
 
@@ -632,18 +631,22 @@ def webhook():
     print(update)
 
     try:
-        if "message" in update:
-            handle_message(update["message"])
-    except Exception as e:
-        print("BOT ERROR:", repr(e))
-
         try:
-            chat_id = update["message"]["chat"]["id"]
-            send_message(chat_id, f"Ошибка: {e}")
-        except Exception:
-            pass
+    if "message" in update:
+        handle_message(update["message"])
 
-    return "ok", 200
+    if "callback_query" in update:
+        callback = update["callback_query"]
+        chat_id = callback["message"]["chat"]["id"]
+        data = callback["data"]
+
+        if data.startswith("identifier:"):
+            value = data.split(":", 1)[1]
+            state = USER_STATE.get(str(chat_id))
+            if state:
+                state["data"]["identifier_type"] = value
+                state["step"] = "identifier_value"
+                send_message(chat_id, f"Введите значение {value}:")
 
 
 if __name__ == "__main__":
