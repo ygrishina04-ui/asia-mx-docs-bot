@@ -577,10 +577,14 @@ def webhook():
 
     update = Update.de_json(request.get_json(force=True), tg_app.bot)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(tg_app.initialize())
-    loop.run_until_complete(tg_app.process_update(update))
-    loop.close()
+    try:
+        asyncio.run(tg_app.initialize())
+    except Exception as e:
+        print("INIT ERROR:", repr(e))
+
+    try:
+        asyncio.run(tg_app.process_update(update))
+    except Exception as e:
+        print("PROCESS ERROR:", repr(e))
 
     return "ok", 200
