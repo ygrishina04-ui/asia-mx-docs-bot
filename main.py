@@ -631,24 +631,34 @@ def webhook():
     print(update)
 
     try:
+        if "message" in update:
+            handle_message(update["message"])
+
+        if "callback_query" in update:
+            callback = update["callback_query"]
+            chat_id = callback["message"]["chat"]["id"]
+            data = callback["data"]
+
+            if data.startswith("identifier:"):
+                value = data.split(":", 1)[1]
+                state = USER_STATE.get(str(chat_id))
+
+                if state:
+                    state["data"]["identifier_type"] = value
+                    state["step"] = "identifier_value"
+                    send_message(chat_id, f"Введите значение {value}:")
+
+    except Exception as e:
+        print("BOT ERROR:", repr(e))
+
         try:
-    if "message" in update:
-        handle_message(update["message"])
+            if "message" in update:
+                chat_id = update["message"]["chat"]["id"]
+            else:
+                chat_id = update["callback_query"]["message"]["chat"]["id"]
 
-    if "callback_query" in update:
-        callback = update["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
-        data = callback["data"]
+            send_message(chat_id, f"Ошибка: {e}")
+        except Exception:
+            pass
 
-        if data.startswith("identifier:"):
-            value = data.split(":", 1)[1]
-            state = USER_STATE.get(str(chat_id))
-            if state:
-                state["data"]["identifier_type"] = value
-                state["step"] = "identifier_value"
-                send_message(chat_id, f"Введите значение {value}:")
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    return "ok", 200
