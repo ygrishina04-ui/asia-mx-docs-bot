@@ -573,16 +573,14 @@ def webhook():
     if request.method == "GET":
         return "Webhook endpoint is alive", 200
 
-    print(request.get_json())
+    import asyncio
+
+    update = Update.de_json(request.get_json(force=True), tg_app.bot)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(tg_app.initialize())
+    loop.run_until_complete(tg_app.process_update(update))
+    loop.close()
 
     return "ok", 200
-
-
-@app.route("/")
-def home():
-    return "ASIA MX Docs Bot is running ✅"
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
