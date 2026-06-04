@@ -573,6 +573,8 @@ def webhook():
     if request.method == "GET":
         return "Webhook endpoint is alive", 200
 
+    print(request.get_json())
+
     return "ok", 200
 
 
