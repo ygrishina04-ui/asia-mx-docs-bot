@@ -563,16 +563,15 @@ tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(CallbackQueryHandler(handle_callback))
 
 
-@app.route(f"/webhook/{WEBHOOK_SECRET}", methods=["GET", "POST"])
+@app.route("/test")
+def test():
+    return "TEST OK", 200
+
+
+@app.route("/webhook/asia_mx_secret", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
         return "Webhook endpoint is alive", 200
-
-    update = Update.de_json(request.get_json(force=True), tg_app.bot)
-
-    import asyncio
-    asyncio.run(tg_app.initialize())
-    asyncio.run(tg_app.process_update(update))
 
     return "ok", 200
 
