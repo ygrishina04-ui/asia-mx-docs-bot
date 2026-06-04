@@ -348,12 +348,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    USER_STATE[user_id] = {
-        "mode": "invoice",
-        "step": "buyer_full_name",
-        "data": {},
-    }
+    context.user_data.clear()
+    context.user_data["mode"] = "invoice"
+    context.user_data["step"] = "buyer_full_name"
+    context.user_data["data"] = {}
+
     await update.message.reply_text("Введите ФИО покупателя:")
 
 
