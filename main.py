@@ -410,7 +410,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cancel(update, context)
         return
 
-    state = USER_STATE.get(user_id)
+    state = context.user_data
     if not state or state.get("mode") != "invoice":
         await update.message.reply_text("Выберите действие:", reply_markup=MAIN_MENU)
         return
@@ -493,7 +493,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     user_id = update.effective_user.id
-    state = USER_STATE.get(user_id)
+    state = context.user_data
 
     if query.data.startswith("idtype:"):
         if not state:
