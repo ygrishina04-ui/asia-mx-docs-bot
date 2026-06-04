@@ -28,7 +28,6 @@ if not BOT_TOKEN:
     raise RuntimeError("Не задан BOT_TOKEN в Render Environment")
 
 app = Flask(__name__)
-
 USER_STATE = {}
 
 
@@ -39,29 +38,17 @@ USER_STATE = {}
 AGENT_NAME = "ЭЙЖА ЭМ ЭКС ТРЕЙД ЛИМИТЕД (ASIA MX TRADE LIMITED)"
 AGENT_SHORT = "ЭЙЖА ЭМ ЭКС ТРЕЙД ЛИМИТЕД"
 
-AGENT_ADDRESS = "Unit 704c 7/f Block 3, Nan Fung Industrial City, 18 Tin Hau Road, Tuen Mun, Hong Kong"
-AGENT_EMAIL = "general@asiamx.ltd"
-AGENT_WEB = "asiamx.ltd"
-AGENT_TEL = "+852-9129-2658"
-
 AGENT_INN = "9909722497"
 AGENT_KPP = "270087001"
 
-AGENT_ACCOUNT_PRINT = "40807 810 3 5071 0000002"
 AGENT_ACCOUNT_QR = "40807810350710000002"
-
 AGENT_BANK = "ДАЛЬНЕВОСТОЧНЫЙ БАНК ПАО СБЕРБАНК"
 AGENT_BIK = "040813608"
-
-AGENT_CORR_PRINT = "30101 810 6 0000 0000608"
 AGENT_CORR_QR = "30101810600000000608"
-
-BANK_INN = "7707083893"
-BANK_KPP = "254002002"
 
 
 # =========================
-# TELEGRAM API
+# TELEGRAM
 # =========================
 
 def tg(method, payload=None, files=None):
@@ -85,12 +72,9 @@ def send_message(chat_id, text, keyboard=None):
 
 def send_document(chat_id, file_path, filename, caption=None):
     with open(file_path, "rb") as f:
-        files = {
-            "document": (filename, f),
-        }
-        payload = {
-            "chat_id": chat_id,
-        }
+        files = {"document": (filename, f)}
+        payload = {"chat_id": chat_id}
+
         if caption:
             payload["caption"] = caption
 
@@ -115,6 +99,8 @@ def identifier_keyboard():
             [{"text": "❌ Отмена"}],
         ],
         "resize_keyboard": True,
+        "one_time_keyboard": True,
+        "is_persistent": True,
     }
 
 
@@ -174,7 +160,6 @@ def get_next_invoice_number(data):
         ])
 
     values = ws.get_all_values()
-
     last_number = 14252
 
     for row in values[1:]:
@@ -249,258 +234,126 @@ def create_qr(data):
 
 
 # =========================
-# ДОКУМЕНТЫ
+# ШАБЛОНЫ WORD
 # =========================
 
+def replace_placeholders(doc, mapping):
+    def replace_in_paragraph(paragraph):
+        if not paragraph.runs:
+            return
+
+        full_text = "".join(run.text for run in paragraph.runs)
+        new_text = full_text
+
+        for key, value in mapping.items():
+            new_text = new_text.replace(key, str(value))
+
+        if new_text != full_text:
+            for run in paragraph.runs:
+                run.text = ""
+            paragraph.runs[0].text = new_text
+
+    for paragraph in doc.paragraphs:
+        replace_in_paragraph(paragraph)
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    replace_in_paragraph(paragraph)
+
+
+def insert_qr_code(doc, qr_path):
+    for paragraph in doc.paragraphs:
+        if "{{QR_CODE}}" in paragraph.text:
+            paragraph.text = ""
+            run = paragraph.add_run()
+            run.add_picture(qr_path, width=Inches(1.7))
+            return
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    if "{{QR_CODE}}" in paragraph.text:
+                        paragraph.text = ""
+                        run = paragraph.add_run()
+                        run.add_picture(qr_path, width=Inches(1.7))
+                        return
+
+
 def create_invoice_docx(data):
-    doc = Document()
+    doc = Document("templates/invoice_template.docx")
 
-    doc.add_paragraph(AGENT_BANK)
-    doc.add_paragraph(f"Банк получателя")
-    doc.add_paragraph(f"БИК {AGENT_BIK}")
-    doc.add_paragraph(f"Корсчёт {AGENT_CORR_PRINT}")
-    doc.add_paragraph(f"ИНН {AGENT_INN}    КПП {AGENT_KPP}")
-    doc.add_paragraph(f"Сч. № {AGENT_ACCOUNT_PRINT}")
-    doc.add_paragraph(f"Получатель: {AGENT_SHORT}")
+    mapping = {
+        "{{INVOICE_NUMBER}}": data["invoice_number"],
+        "{{INVOICE_DATE}}": data["invoice_date"],
+        "{{BUYER_FULL_NAME}}": data["buyer_full_name"],
+        "{{CONTRACT_NUMBER}}": data["contract_number"],
+        "{{CONTRACT_DATE}}": data["contract_date"],
+        "{{FOREIGN_INVOICE_NUMBER}}": data["foreign_invoice_number"],
+        "{{CAR_NAME}}": data["car_name"],
+        "{{IDENTIFIER_TYPE}}": data["identifier_type"],
+        "{{IDENTIFIER_VALUE}}": data["identifier_value"],
+        "{{AMOUNT}}": format_amount(data["amount"]),
+        "{{AMOUNT_WORDS}}": amount_words(data["amount"]),
+    }
 
-    doc.add_heading(
-        f"Счет на оплату № {data['invoice_number']} от {data['invoice_date']}",
-        level=1,
-    )
-
-    doc.add_paragraph(
-        f"Поставщик (Исполнитель): {AGENT_NAME}, ИНН {AGENT_INN}, КПП {AGENT_KPP}, "
-        f"{AGENT_ADDRESS}"
-    )
-
-    doc.add_paragraph(
-        f"Покупатель (Заказчик): {data['buyer_full_name']}"
-    )
-
-    table = doc.add_table(rows=1, cols=6)
-    table.style = "Table Grid"
-
-    headers = ["№", "Товары (работы, услуги)", "Кол-во", "Ед.", "Цена", "Сумма"]
-
-    for i, h in enumerate(headers):
-        table.rows[0].cells[i].text = h
-
-    service_text = (
-        f"Оплата по договору {data['contract_number']} от {data['contract_date']}, "
-        f"инвойс {data['foreign_invoice_number']}, "
-        f"за {data['car_name']}, "
-        f"{data['identifier_type']} {data['identifier_value']}"
-    )
-
-    row = table.add_row().cells
-    row[0].text = "1"
-    row[1].text = service_text
-    row[2].text = "1"
-    row[3].text = "Шт"
-    row[4].text = format_amount(data["amount"])
-    row[5].text = format_amount(data["amount"])
-
-    doc.add_paragraph("")
-    doc.add_paragraph(f"Итого: {format_amount(data['amount'])}")
-    doc.add_paragraph("НДС не облагается: -")
-    doc.add_paragraph(f"Всего к оплате: {format_amount(data['amount'])}")
-
-    doc.add_paragraph(
-        f"Всего наименований 1, на сумму {format_amount(data['amount'])} руб."
-    )
-    doc.add_paragraph(amount_words(data["amount"]))
+    replace_placeholders(doc, mapping)
 
     qr_path = create_qr(data)
-    doc.add_paragraph("")
-    doc.add_paragraph("QR-код для оплаты:")
-    doc.add_picture(qr_path, width=Inches(1.7))
+    insert_qr_code(doc, qr_path)
 
     path = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
     doc.save(path)
-
     return path
 
 
 def create_contract_docx(data):
-    doc = Document()
+    doc = Document("templates/contract_template.docx")
 
-    doc.add_paragraph("ASIA MX TRADE LIMITED")
-    doc.add_paragraph(AGENT_ADDRESS)
-    doc.add_paragraph(f"Email: {AGENT_EMAIL}")
-    doc.add_paragraph(f"Web: {AGENT_WEB}")
-    doc.add_paragraph(f"Tel: {AGENT_TEL}")
+    mapping = {
+        "{{CONTRACT_NUMBER}}": data["contract_number"],
+        "{{CONTRACT_DATE}}": data["contract_date"],
+        "{{BUYER_FULL_NAME}}": data["buyer_full_name"],
+        "{{BUYER_BIRTH_DATE}}": data.get("buyer_birth_date", ""),
+        "{{BUYER_PASSPORT_SERIES}}": data.get("buyer_passport_series", ""),
+        "{{BUYER_PASSPORT_NUMBER}}": data.get("buyer_passport_number", ""),
+        "{{BUYER_PASSPORT_ISSUED_BY}}": data.get("buyer_passport_issued_by", ""),
+        "{{BUYER_PASSPORT_ISSUE_DATE}}": data.get("buyer_passport_issue_date", ""),
+        "{{BUYER_PASSPORT_CODE}}": data.get("buyer_passport_code", ""),
+        "{{BUYER_INN}}": data.get("buyer_inn", ""),
+        "{{BUYER_REG_ADDRESS}}": data.get("buyer_reg_address", ""),
+    }
 
-    doc.add_heading(
-        f"АГЕНТСКИЙ ДОГОВОР № {data['contract_number']}",
-        level=1,
-    )
-    doc.add_paragraph("по организации оплаты автомобилей")
-    doc.add_paragraph(f"г. Владивосток    {data['contract_date']}")
-
-    doc.add_paragraph(
-        f"{data['buyer_full_name']}, именуемый(ая) в дальнейшем «Принципал», "
-        f"с одной стороны, и {AGENT_NAME}, зарегистрированная на территории САР Гонконг, "
-        f"{AGENT_ADDRESS}, ИНН {AGENT_INN}, КПП {AGENT_KPP}, "
-        f"в лице Антона Фалкона Пичардо, действующего на основании Устава, "
-        f"именуемая в дальнейшем «Агент», с другой стороны, совместно именуемые "
-        f"«Стороны», заключили настоящий договор о нижеследующем:"
-    )
-
-    doc.add_heading("1. Предмет договора", level=2)
-    doc.add_paragraph(
-        "1.1. Принципал поручает, а Агент принимает на себя обязательства по организации "
-        "и проведению оплаты автомобилей, приобретаемых Принципалом, в соответствии "
-        "с условиями, согласованными между Принципалом и соответствующими поставщиками."
-    )
-    doc.add_paragraph(
-        "1.2. Агент осуществляет исключительно функции по приёму денежных средств "
-        "от Принципала и их перечислению на счета поставщиков, указанных Принципалом."
-    )
-
-    doc.add_heading("2. Обязанности Агента", level=2)
-    doc.add_paragraph(
-        "2.1. Получать от Принципала письменные или электронные поручения "
-        "с указанием реквизитов поставщиков и суммы платежа."
-    )
-    doc.add_paragraph(
-        "2.2. Перечислять денежные средства поставщикам в сроки, согласованные с Принципалом."
-    )
-    doc.add_paragraph(
-        "2.3. Предоставлять Принципалу подтверждающие документы об отправке платежей."
-    )
-
-    doc.add_heading("3. Обязанности Принципала", level=2)
-    doc.add_paragraph(
-        "3.1. Своевременно предоставлять Агенту необходимые реквизиты поставщика и сумму платежа."
-    )
-    doc.add_paragraph(
-        "3.2. Обеспечить поступление денежных средств на расчётный счёт Агента "
-        "до даты перечисления средств поставщику."
-    )
-
-    doc.add_heading("4. Вознаграждение и порядок расчётов", level=2)
-    doc.add_paragraph(
-        "4.1. Вознаграждение Агента составляет 1% от суммы каждого платежа по курсу ЦБ."
-    )
-    doc.add_paragraph(
-        "4.2. Оплата вознаграждения производится путём безналичного перечисления "
-        "на расчётный счёт Агента в момент перевода денежных средств."
-    )
-
-    doc.add_heading("5. Банковские реквизиты сторон", level=2)
-    doc.add_paragraph(
-        f"Агент:\n"
-        f"ASIA MX TRADE LIMITED\n"
-        f"{AGENT_ADDRESS}\n"
-        f"Email: {AGENT_EMAIL}\n"
-        f"Web: {AGENT_WEB}\n"
-        f"Tel: {AGENT_TEL}\n\n"
-        f"Банковские реквизиты (Россия):\n"
-        f"Наименование: {AGENT_NAME}\n"
-        f"ИНН: {AGENT_INN}, КПП: {AGENT_KPP}\n"
-        f"Р/с: {AGENT_ACCOUNT_PRINT}\n"
-        f"Банк: {AGENT_BANK}\n"
-        f"БИК: {AGENT_BIK}\n"
-        f"Корсчёт: {AGENT_CORR_PRINT}\n"
-        f"ИНН банка: {BANK_INN}, КПП банка: {BANK_KPP}"
-    )
-
-    doc.add_heading("6. Ответственность сторон", level=2)
-    doc.add_paragraph(
-        "6.1. Стороны несут ответственность за ненадлежащее исполнение своих обязательств "
-        "в соответствии с законодательством."
-    )
-    doc.add_paragraph(
-        "6.2. Агент освобождается от ответственности за любые убытки, вызванные "
-        "действиями/бездействием поставщиков."
-    )
-
-    doc.add_heading("7. Форс-мажор", level=2)
-    doc.add_paragraph(
-        "Стороны освобождаются от ответственности за частичное или полное неисполнение "
-        "обязательств по настоящему договору, если оно явилось следствием обстоятельств "
-        "непреодолимой силы."
-    )
-
-    doc.add_heading("8. Срок действия договора", level=2)
-    doc.add_paragraph(
-        "8.1. Настоящий договор вступает в силу с момента подписания и действует "
-        "до «31» декабря 2026 г."
-    )
-
-    doc.add_heading("9. Заключительные положения", level=2)
-    doc.add_paragraph(
-        "9.1. Все споры и разногласия решаются путём переговоров, а при недостижении "
-        "согласия — разрешаются на основании российского законодательства."
-    )
-
-    doc.add_paragraph("")
-    doc.add_paragraph("Подписи сторон:")
-    doc.add_paragraph(f"Агент: _____________________ /Антон Фалкон Пичардо/")
-    doc.add_paragraph(f"Принципал: _____________________ /{data['buyer_full_name']}/")
+    replace_placeholders(doc, mapping)
 
     path = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
     doc.save(path)
-
     return path
 
 
 def create_appendix_docx(data):
-    doc = Document()
+    doc = Document("templates/appendix_template.docx")
 
-    doc.add_heading(
-        f"Приложение №1 к Агентскому договору № {data['contract_number']} от {data['contract_date']}",
-        level=1,
-    )
+    amount_after_fee = normalize_amount(data["amount"]) * 0.99
 
-    doc.add_heading(
-        f"Поручение Агенту №1 от {data['invoice_date']}",
-        level=2,
-    )
+    mapping = {
+        "{{CONTRACT_NUMBER}}": data["contract_number"],
+        "{{CONTRACT_DATE}}": data["contract_date"],
+        "{{ORDER_DATE}}": data["invoice_date"],
+        "{{BUYER_FULL_NAME}}": data["buyer_full_name"],
+        "{{AMOUNT}}": format_amount(data["amount"]),
+        "{{AMOUNT_WORDS}}": amount_words(data["amount"]),
+        "{{AMOUNT_AFTER_FEE}}": format_amount(amount_after_fee),
+        "{{CONTRACTOR}}": data.get("contractor", ""),
+        "{{CONTRACTOR_BANK}}": data.get("contractor_bank", ""),
+    }
 
-    doc.add_paragraph(
-        f"{data['buyer_full_name']} (Принципал) поручает {AGENT_NAME} (Агент) "
-        f"обеспечить своевременную оплату в пользу третьего лица (Контрагента) "
-        f"от имени Принципала по договору поставки."
-    )
-
-    table = doc.add_table(rows=8, cols=2)
-    table.style = "Table Grid"
-
-    after_fee = normalize_amount(data["amount"]) * 0.99
-
-    rows = [
-        ("Валюта-1", "Российский рубль"),
-        ("Сумма платежа, Валюта-1", f"{format_amount(data['amount'])} руб."),
-        (
-            "Банковские реквизиты Агента",
-            f"{AGENT_NAME}\n"
-            f"ИНН: {AGENT_INN}, КПП: {AGENT_KPP}\n"
-            f"Р/с: {AGENT_ACCOUNT_PRINT}\n"
-            f"Банк: {AGENT_BANK}\n"
-            f"БИК: {AGENT_BIK}\n"
-            f"Корсчёт: {AGENT_CORR_PRINT}\n"
-            f"ИНН банка: {BANK_INN}, КПП банка: {BANK_KPP}",
-        ),
-        ("Вознаграждение Агента", "1%"),
-        ("Валюта-2", "Российский рубль"),
-        ("Сумма после удержания вознаграждения", f"{format_amount(after_fee)} руб."),
-        ("Контрагент", "Заполняется дополнительно"),
-        ("Другие условия", ""),
-    ]
-
-    for i, row_data in enumerate(rows):
-        table.rows[i].cells[0].text = row_data[0]
-        table.rows[i].cells[1].text = row_data[1]
-
-    doc.add_paragraph("")
-    doc.add_paragraph(f"Агент:\n{AGENT_NAME}\n_____________________ /Антон Фалкон Пичардо/")
-    doc.add_paragraph("")
-    doc.add_paragraph(f"Принципал:\n_____________________ /{data['buyer_full_name']}/")
+    replace_placeholders(doc, mapping)
 
     path = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
     doc.save(path)
-
     return path
 
 
@@ -534,6 +387,54 @@ def process_invoice_step(chat_id, text):
 
     if step == "buyer_full_name":
         data["buyer_full_name"] = text
+        state["step"] = "buyer_birth_date"
+        send_message(chat_id, "Введите дату рождения:")
+        return
+
+    if step == "buyer_birth_date":
+        data["buyer_birth_date"] = text
+        state["step"] = "buyer_passport_series"
+        send_message(chat_id, "Введите серию паспорта:")
+        return
+
+    if step == "buyer_passport_series":
+        data["buyer_passport_series"] = text
+        state["step"] = "buyer_passport_number"
+        send_message(chat_id, "Введите номер паспорта:")
+        return
+
+    if step == "buyer_passport_number":
+        data["buyer_passport_number"] = text
+        state["step"] = "buyer_passport_issued_by"
+        send_message(chat_id, "Введите кем выдан паспорт:")
+        return
+
+    if step == "buyer_passport_issued_by":
+        data["buyer_passport_issued_by"] = text
+        state["step"] = "buyer_passport_issue_date"
+        send_message(chat_id, "Введите дату выдачи паспорта:")
+        return
+
+    if step == "buyer_passport_issue_date":
+        data["buyer_passport_issue_date"] = text
+        state["step"] = "buyer_passport_code"
+        send_message(chat_id, "Введите код подразделения:")
+        return
+
+    if step == "buyer_passport_code":
+        data["buyer_passport_code"] = text
+        state["step"] = "buyer_inn"
+        send_message(chat_id, "Введите ИНН физлица:")
+        return
+
+    if step == "buyer_inn":
+        data["buyer_inn"] = text
+        state["step"] = "buyer_reg_address"
+        send_message(chat_id, "Введите адрес регистрации:")
+        return
+
+    if step == "buyer_reg_address":
+        data["buyer_reg_address"] = text
         state["step"] = "contract_number"
         send_message(chat_id, "Введите номер договора:")
         return
@@ -580,6 +481,19 @@ def process_invoice_step(chat_id, text):
 
     if step == "amount":
         data["amount"] = text.replace(" ", "").replace(",", ".")
+        state["step"] = "contractor"
+        send_message(chat_id, "Введите контрагента для приложения:")
+        return
+
+    if step == "contractor":
+        data["contractor"] = text
+        state["step"] = "contractor_bank"
+        send_message(chat_id, "Введите банковские реквизиты контрагента:")
+        return
+
+    if step == "contractor_bank":
+        data["contractor_bank"] = text
+
         data["invoice_date"] = datetime.now().strftime("%d.%m.%Y")
         data["invoice_number"] = get_next_invoice_number(data)
 
@@ -606,11 +520,7 @@ def process_invoice_step(chat_id, text):
             "Счет сформирован ✅",
         )
 
-        send_message(
-            chat_id,
-            "Что формируем дальше?",
-            after_invoice_keyboard(),
-        )
+        send_message(chat_id, "Что формируем дальше?", after_invoice_keyboard())
 
         state["step"] = "done"
         return
