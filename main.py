@@ -563,11 +563,6 @@ tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 tg_app.add_handler(CallbackQueryHandler(handle_callback))
 
 
-@app.route("/")
-def home():
-    return "ASIA MX Docs Bot is running ✅"
-
-
 @app.route(f"/webhook/{WEBHOOK_SECRET}", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
