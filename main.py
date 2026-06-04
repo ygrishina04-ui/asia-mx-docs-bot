@@ -569,20 +569,22 @@ def home():
 
 
 @app.route(f"/webhook/{WEBHOOK_SECRET}", methods=["GET", "POST"])
-async def webhook():
+def webhook():
     if request.method == "GET":
         return "Webhook endpoint is alive", 200
 
     update = Update.de_json(request.get_json(force=True), tg_app.bot)
-    await tg_app.process_update(update)
-    return "ok"
+
+    import asyncio
+    asyncio.run(tg_app.initialize())
+    asyncio.run(tg_app.process_update(update))
+
+    return "ok", 200
 
 
-@app.before_request
-async def before_request():
-    if not tg_app.running:
-        await tg_app.initialize()
-        await tg_app.start()
+@app.route("/")
+def home():
+    return "ASIA MX Docs Bot is running ✅"
 
 
 if __name__ == "__main__":
